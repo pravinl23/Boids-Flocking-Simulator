@@ -5,189 +5,221 @@ import math
 pygame.init()
 
 # Predefined parameters
-weight_c = 1.0  # Weight factor of coherence
+proximity = 50  # Proximity radius
+obstacle_radius = 20
+max_speed = 2.0  # Maximum speed
+smoothing_factor = 0.1  # Factor to smooth transitions in direction and speed
+
+# Adjustable parameters
+weight_c = 1.0  # Weight factor of cohesion
 weight_s = 1.5  # Weight factor of separation
 weight_a = 1.0  # Weight factor of alignment
-proximity = 50  # Proximity radius
+weight_avoid = 2.0  # Weight factor of obstacle avoidance
 
-# Window screen
+# Screen setup
 window_width, window_height = 640, 480
 window = pygame.display.set_mode((window_width, window_height))
-pygame.display.set_caption("Boids")
+pygame.display.set_caption("Boids Flocking Simulator")
 
-# Boid shape from PNG
-boid_shape = pygame.image.load("boid.png")
+# Colors
+GRAY = (200, 200, 200)
+BLUE = (100, 100, 255)
+WHITE = (255, 255, 255)
+RED = (255, 0, 0)
+BLACK = (0, 0, 0)
 
-# Boid setup
+# Fonts
+font = pygame.font.Font(None, 24)
+
+# Boid shape
+boid_shape = pygame.image.load("/Users/pravinlohani/Boids-Flocking-Simulator/main/boid.png")
+
+# Button state
+add_obstacles_mode = False
+
+
+def draw_button(screen, x, y, width, height, text, active):
+    pygame.draw.rect(screen, GRAY if not active else RED, (x, y, width, height))
+    label = font.render(text, True, BLACK if not active else WHITE)
+    screen.blit(label, (x + (width - label.get_width()) // 2, y + (height - label.get_height()) // 2))
+    return pygame.Rect(x, y, width, height)
+
+
+def draw_slider(screen, label, x, y, value, min_value, max_value, dragging, mouse_pos):
+    pygame.draw.rect(screen, GRAY, (x, y, 150, 10))  # Slider background
+    slider_pos = int((value - min_value) / (max_value - min_value) * 150)
+    knob_rect = pygame.Rect(x + slider_pos - 8, y - 3, 16, 16)
+    pygame.draw.circle(screen, BLUE if dragging else GRAY, (x + slider_pos, y + 5), 8)
+    text = font.render(f"{label}: {value:.1f}", True, WHITE)
+    screen.blit(text, (x, y - 20))
+    return knob_rect
+
+
 class Boid:
     def __init__(self, window_width, window_height):
-        # Boid parameters setup
         self.shape = pygame.transform.scale(boid_shape, (20, 14))
-        self.velocity = (random.uniform(-0.75, 0.75), random.uniform(-0.75, 0.75))
+        self.velocity = (random.uniform(-0.5, 0.5), random.uniform(-0.5, 0.5))
         self.window_width = window_width
         self.window_height = window_height
         self.direction = random.uniform(0.0, 2.0 * math.pi)
-
-        # Generate random coordinates for boid spawn
         self.x = random.randrange(40, 600)
         self.y = random.randrange(40, 440)
 
-    # Calculate where boid is in the next updated frame
-    def update(self, boids, weight_c, weight_s, weight_a):
+    def update(self, boids, obstacles, weight_c, weight_s, weight_a, weight_avoid):
         cohesion = self.cohesion(boids, proximity)
         separation = self.separation(boids, proximity)
         alignment = self.alignment(boids, proximity)
+        avoidance = self.avoid_obstacles(obstacles)
 
-        # Adjust velocity using the cohesion, alignment, and separation behaviors
-        weight = [weight_c, weight_s, weight_a]
-        behaviors = [cohesion, separation, alignment]
+        # Weighted combination of behaviors
+        behaviors = [cohesion, separation, alignment, avoidance]
+        weights = [weight_c, weight_s, weight_a, weight_avoid]
         for i in range(len(behaviors)):
             if behaviors[i] is not None:
-                self.velocity = (self.velocity[0] + behaviors[i][0] * weight[i],
-                                 self.velocity[1] + behaviors[i][1] * weight[i])
+                self.velocity = (
+                    self.velocity[0] + behaviors[i][0] * weights[i] * smoothing_factor,
+                    self.velocity[1] + behaviors[i][1] * weights[i] * smoothing_factor,
+                )
 
         # Limit speed
-        max_speed = 1.5
-        speed = (self.velocity[0] ** 2 + self.velocity[1] ** 2) ** 0.5
+        speed = math.sqrt(self.velocity[0] ** 2 + self.velocity[1] ** 2)
         if speed > max_speed:
-            # Scale down the boid's velocity and multiply by max speed to ensure the speed is appropriate
-            self.velocity = ((self.velocity[0] / speed) * max_speed, (self.velocity[1] / speed) * max_speed)
+            self.velocity = (self.velocity[0] / speed * max_speed, self.velocity[1] / speed * max_speed)
 
-        # Update boid's position on screen
-        self.x = self.x + self.velocity[0]
-        self.y = self.y + self.velocity[1]
+        # Update position
+        self.x += self.velocity[0]
+        self.y += self.velocity[1]
 
-        # Wrap around the screen x-axis
-        if self.x > self.window_width:
-            self.x = 0
-        elif self.x < 0:
-            self.x = self.window_width
+        # Wrap around screen
+        self.x %= self.window_width
+        self.y %= self.window_height
 
-        # Wrap around the screen y-axis
-        if self.y >= self.window_height:
-            self.y = 0
-        elif self.y < 0:
-            self.y = self.window_height
-
-        # Calculate direction of boid
+        # Update direction
         self.direction = math.degrees(math.atan2(self.velocity[1], self.velocity[0]))
 
-    def angle(self, neighbors):
-        direction = (self.x - neighbors.x, self.y - neighbors.y)
-        dot_product = (self.velocity[0] * direction[0] + self.velocity[1] * direction[1])
-        magnitude_x = (self.velocity[0] ** 2 + self.velocity[1] ** 2) ** 0.5
-        magnitude_y = (direction[0] ** 2 + direction[1] ** 2) ** 0.5
-        if magnitude_x * magnitude_y == 0:
-            return 180  # Avoid division by zero
-        angle = math.degrees(math.acos(dot_product / (magnitude_x * magnitude_y)))
-        return angle
-
-    # Draw boid onto screen
     def draw(self, window):
         rotated_image = pygame.transform.rotate(self.shape, -self.direction)
         rectangle = rotated_image.get_rect(center=(self.x, self.y))
         window.blit(rotated_image, rectangle)
+        # Draw proximity radius
+        pygame.draw.circle(window, (50, 50, 50), (int(self.x), int(self.y)), proximity, 1)
 
-    # Cohesion behavior for boid
+    def avoid_obstacles(self, obstacles):
+        direction = None
+        for obstacle in obstacles:
+            distance = math.sqrt((self.x - obstacle[0]) ** 2 + (self.y - obstacle[1]) ** 2)
+            if distance < obstacle_radius + 10:
+                diff = (self.x - obstacle[0], self.y - obstacle[1])
+                magnitude = math.sqrt(diff[0] ** 2 + diff[1] ** 2)
+                if magnitude > 0:
+                    direction = (diff[0] / magnitude, diff[1] / magnitude)
+        return direction
+
     def cohesion(self, boids, proximity):
-        new_direction = None
-        proximity_radius = proximity
-        neighboring_boids = 0
-
-        # Calculate if there are other boids in the proximity of the boid
-        for neighbors in boids:
-            if neighbors != self:
-                boid_angle = self.angle(neighbors)
-                if boid_angle < 120:
-                    distance = ((self.x - neighbors.x) ** 2 + (self.y - neighbors.y) ** 2) ** 0.5
-                    if distance < proximity_radius:
-                        if new_direction is None:
-                            new_direction = (0, 0)
-                        new_direction = (new_direction[0] + neighbors.x, new_direction[1] + neighbors.y)
-                        neighboring_boids += 1
-
-        # Calculate average position of neighboring boids and return as the new direction value
-        if neighboring_boids > 0 and new_direction is not None:
-            new_direction = (new_direction[0] / neighboring_boids, new_direction[1] / neighboring_boids)
-            return new_direction
+        total_x, total_y, count = 0, 0, 0
+        for boid in boids:
+            if boid != self:
+                distance = math.sqrt((self.x - boid.x) ** 2 + (self.y - boid.y) ** 2)
+                if distance < proximity:
+                    total_x += boid.x
+                    total_y += boid.y
+                    count += 1
+        if count > 0:
+            center_x = total_x / count
+            center_y = total_y / count
+            return (center_x - self.x, center_y - self.y)
         return None
 
-    # Separation behavior for boid
     def separation(self, boids, proximity):
-        new_direction = None
-        proximity_radius = proximity
-        neighboring_boids = 0
-
-        # Calculate if there are other boids in the proximity of the boid
-        for neighbors in boids:
-            if neighbors != self:
-                boid_angle = self.angle(neighbors)
-                if boid_angle < 120:
-                    distance = ((self.x - neighbors.x) ** 2 + (self.y - neighbors.y) ** 2) ** 0.5
-                    if distance < proximity_radius:
-                        direction = (self.x - neighbors.x, self.y - neighbors.y)
-                        distance = ((direction[0]) ** 2 + (direction[1]) ** 2) ** 0.5
-                        if distance > 0:
-                            if new_direction is None:
-                                new_direction = (0, 0)
-                            new_direction = (new_direction[0] + direction[0] / distance,
-                                             new_direction[1] + direction[1] / distance)
-                            neighboring_boids += 1
-
-        # Calculate average direction away from neighboring boids
-        if neighboring_boids > 0 and new_direction is not None:
-            new_direction = (new_direction[0] / neighboring_boids, new_direction[1] / neighboring_boids)
-            return new_direction
+        diff_x, diff_y, count = 0, 0, 0
+        for boid in boids:
+            if boid != self:
+                distance = math.sqrt((self.x - boid.x) ** 2 + (self.y - boid.y) ** 2)
+                if distance < proximity / 2:  # Stronger repulsion within half proximity radius
+                    diff_x += self.x - boid.x
+                    diff_y += self.y - boid.y
+                    count += 1
+        if count > 0:
+            return (diff_x / count, diff_y / count)
         return None
 
-    # Alignment behavior for boid
     def alignment(self, boids, proximity):
-        new_direction = None
-        proximity_radius = proximity
-        neighboring_boids = 0
-
-        # Calculate if there are other boids in the proximity of the boid
-        for neighbors in boids:
-            if neighbors != self:
-                boid_angle = self.angle(neighbors)
-                if boid_angle < 120:
-                    distance = ((self.x - neighbors.x) ** 2 + (self.y - neighbors.y) ** 2) ** 0.5
-                    if distance < proximity_radius:
-                        if new_direction is None:
-                            new_direction = (0, 0)
-                        new_direction = (new_direction[0] + neighbors.velocity[0],
-                                         new_direction[1] + neighbors.velocity[1])
-                        neighboring_boids += 1
-
-        # Calculate average velocity of neighboring boids
-        if neighboring_boids > 0 and new_direction is not None:
-            new_direction = (new_direction[0] / neighboring_boids, new_direction[1] / neighboring_boids)
-            return new_direction
+        avg_velocity_x, avg_velocity_y, count = 0, 0, 0
+        for boid in boids:
+            if boid != self:
+                distance = math.sqrt((self.x - boid.x) ** 2 + (self.y - boid.y) ** 2)
+                if distance < proximity:
+                    avg_velocity_x += boid.velocity[0]
+                    avg_velocity_y += boid.velocity[1]
+                    count += 1
+        if count > 0:
+            return (avg_velocity_x / count, avg_velocity_y / count)
         return None
 
-boids = []
-# Predefined number of boids
-num_boids = 50  # Set the number of boids to 50 by default
-for i in range(num_boids):
-    boid = Boid(window_width, window_height)
-    boids.append(boid)
 
-# Main loop
+boids = [Boid(window_width, window_height) for _ in range(50)]
+obstacles = []
+
+slider_states = {"dragging": None, "mouse_x": 0}
+
+# Set up sliders
+weight_c_slider = pygame.Rect(10, 30, 150, 10)
+weight_s_slider = pygame.Rect(10, 70, 150, 10)
+weight_a_slider = pygame.Rect(10, 110, 150, 10)
+
 running = True
 while running:
+    mouse_pos = pygame.mouse.get_pos()
+    mouse_pressed = pygame.mouse.get_pressed()
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if add_obstacles_mode:
+                obstacles.append(mouse_pos)
 
-    # Clear screen
-    window.fill((0, 0, 0))
+            # Check for slider dragging
+            if slider_states["dragging"] is None:
+                if weight_c_slider.collidepoint(mouse_pos):
+                    slider_states["dragging"] = "weight_c"
+                    slider_states["mouse_x"] = mouse_pos[0]
+                elif weight_s_slider.collidepoint(mouse_pos):
+                    slider_states["dragging"] = "weight_s"
+                elif weight_a_slider.collidepoint(mouse_pos):
+                    slider_states["dragging"] = "weight_a"
 
-    # Update and draw each boid
+        elif event.type == pygame.MOUSEBUTTONUP:
+            slider_states["dragging"] = None
+
+    if slider_states["dragging"] == "weight_c":
+        weight_c = min(max((mouse_pos[0] - 10) / 150.0, 0), 3.0)
+    elif slider_states["dragging"] == "weight_s":
+        weight_s = min(max((mouse_pos[0] - 10) / 150.0, 0), 3.0)
+    elif slider_states["dragging"] == "weight_a":
+        weight_a = min(max((mouse_pos[0] - 10) / 150.0, 0), 3.0)
+
+    window.fill(BLACK)
+
+    # Handle button actions
+    add_button = draw_button(window, 10, 150, 150, 50, "Toggle Obstacles", not add_obstacles_mode)
+    if add_button.collidepoint(mouse_pos) and mouse_pressed[0]:
+        add_obstacles_mode = not add_obstacles_mode
+
+    # Draw sliders
+    draw_slider(window, "Cohesion", 10, 30, weight_c, 0, 1, slider_states["dragging"], mouse_pos)
+    draw_slider(window, "Separation", 10, 70, weight_s, 0, 1, slider_states["dragging"], mouse_pos)
+    draw_slider(window, "Alignment", 10, 110, weight_a, 0, 1, slider_states["dragging"], mouse_pos)
+
+    # Update boids
     for boid in boids:
-        boid.update(boids, weight_c, weight_s, weight_a)
+        boid.update(boids, obstacles, weight_c, weight_s, weight_a, weight_avoid)
         boid.draw(window)
 
-    # Update display
+    # Draw obstacles
+    for obstacle in obstacles:
+        pygame.draw.circle(window, RED, obstacle, obstacle_radius)
+
     pygame.display.flip()
+    pygame.time.delay(30)
 
 pygame.quit()
