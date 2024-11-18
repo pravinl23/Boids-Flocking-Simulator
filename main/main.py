@@ -11,10 +11,10 @@ max_speed = 2.0  # Maximum speed
 smoothing_factor = 0.1  # Factor to smooth transitions in direction and speed
 
 # Adjustable parameters
-weight_c = 1.0  # Weight factor of cohesion
+weight_c = 1.2  # Weight factor of cohesion
 weight_s = 1.5  # Weight factor of separation
-weight_a = 1.0  # Weight factor of alignment
-weight_avoid = 2.0  # Weight factor of obstacle avoidance
+weight_a = 1.3  # Weight factor of alignment
+weight_avoid = 15.0  # Weight factor of obstacle avoidance
 
 # Screen setup
 window_width, window_height = 640, 480
@@ -31,33 +31,23 @@ BLACK = (0, 0, 0)
 # Fonts
 font = pygame.font.Font(None, 24)
 
-# Boid shape
-boid_shape = pygame.image.load("/Users/pravinlohani/Boids-Flocking-Simulator/main/boid.png")
-
 # Button state
 add_obstacles_mode = False
 
-
-def draw_button(screen, x, y, width, height, text, active):
-    pygame.draw.rect(screen, GRAY if not active else RED, (x, y, width, height))
-    label = font.render(text, True, BLACK if not active else WHITE)
-    screen.blit(label, (x + (width - label.get_width()) // 2, y + (height - label.get_height()) // 2))
-    return pygame.Rect(x, y, width, height)
-
-
 def draw_slider(screen, label, x, y, value, min_value, max_value, dragging, mouse_pos):
     pygame.draw.rect(screen, GRAY, (x, y, 150, 10))  # Slider background
+    
+    # Update the slider position calculation to account for the 0-3 range
     slider_pos = int((value - min_value) / (max_value - min_value) * 150)
+    
     knob_rect = pygame.Rect(x + slider_pos - 8, y - 3, 16, 16)
     pygame.draw.circle(screen, BLUE if dragging else GRAY, (x + slider_pos, y + 5), 8)
     text = font.render(f"{label}: {value:.1f}", True, WHITE)
     screen.blit(text, (x, y - 20))
     return knob_rect
 
-
 class Boid:
     def __init__(self, window_width, window_height):
-        self.shape = pygame.transform.scale(boid_shape, (20, 14))
         self.velocity = (random.uniform(-0.5, 0.5), random.uniform(-0.5, 0.5))
         self.window_width = window_width
         self.window_height = window_height
@@ -98,11 +88,14 @@ class Boid:
         self.direction = math.degrees(math.atan2(self.velocity[1], self.velocity[0]))
 
     def draw(self, window):
-        rotated_image = pygame.transform.rotate(self.shape, -self.direction)
-        rectangle = rotated_image.get_rect(center=(self.x, self.y))
-        window.blit(rotated_image, rectangle)
-        # Draw proximity radius
-        pygame.draw.circle(window, (50, 50, 50), (int(self.x), int(self.y)), proximity, 1)
+        # Calculate triangle points for the boid
+        size = 10
+        angle = math.radians(self.direction)
+        front = (self.x + size * math.cos(angle), self.y + size * math.sin(angle))
+        left = (self.x + size * math.cos(angle + 2.5), self.y + size * math.sin(angle + 2.5))
+        right = (self.x + size * math.cos(angle - 2.5), self.y + size * math.sin(angle - 2.5))
+
+        pygame.draw.polygon(window, WHITE, [front, left, right])
 
     def avoid_obstacles(self, obstacles):
         direction = None
@@ -191,24 +184,25 @@ while running:
         elif event.type == pygame.MOUSEBUTTONUP:
             slider_states["dragging"] = None
 
+        # Toggle obstacle mode when X is pressed on your keyboard
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_x:
+                obstacles.append(mouse_pos)
+
     if slider_states["dragging"] == "weight_c":
-        weight_c = min(max((mouse_pos[0] - 10) / 150.0, 0), 3.0)
+        weight_c = min(max((mouse_pos[0] - 10) / 150.0 * 3, 0), 3.0)  # scale to 0-3
     elif slider_states["dragging"] == "weight_s":
-        weight_s = min(max((mouse_pos[0] - 10) / 150.0, 0), 3.0)
+        weight_s = min(max((mouse_pos[0] - 10) / 150.0 * 3, 0), 3.0)  # scale to 0-3
     elif slider_states["dragging"] == "weight_a":
-        weight_a = min(max((mouse_pos[0] - 10) / 150.0, 0), 3.0)
+        weight_a = min(max((mouse_pos[0] - 10) / 150.0 * 3, 0), 3.0)  # scale to 0-3
+
 
     window.fill(BLACK)
 
-    # Handle button actions
-    add_button = draw_button(window, 10, 150, 150, 50, "Toggle Obstacles", not add_obstacles_mode)
-    if add_button.collidepoint(mouse_pos) and mouse_pressed[0]:
-        add_obstacles_mode = not add_obstacles_mode
-
     # Draw sliders
-    draw_slider(window, "Cohesion", 10, 30, weight_c, 0, 1, slider_states["dragging"], mouse_pos)
-    draw_slider(window, "Separation", 10, 70, weight_s, 0, 1, slider_states["dragging"], mouse_pos)
-    draw_slider(window, "Alignment", 10, 110, weight_a, 0, 1, slider_states["dragging"], mouse_pos)
+    draw_slider(window, "Cohesion", 10, 30, weight_c, 0, 3, slider_states["dragging"], mouse_pos)
+    draw_slider(window, "Separation", 10, 70, weight_s, 0, 3, slider_states["dragging"], mouse_pos)
+    draw_slider(window, "Alignment", 10, 110, weight_a, 0, 3, slider_states["dragging"], mouse_pos)
 
     # Update boids
     for boid in boids:
@@ -219,7 +213,14 @@ while running:
     for obstacle in obstacles:
         pygame.draw.circle(window, RED, obstacle, obstacle_radius)
 
+    # Draw toggle mode message
+    toggle_message = "Press X to Place Obstacle Where Your Cursor is:"
+    text_surface = font.render(toggle_message, True, WHITE)
+    window.blit(text_surface, (window_width - text_surface.get_width() - 10, window_height - 30))
+
     pygame.display.flip()
     pygame.time.delay(30)
 
 pygame.quit()
+
+
