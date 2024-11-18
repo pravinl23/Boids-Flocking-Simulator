@@ -18,6 +18,15 @@ A Python-based simulation of Boids, inspired by Craig Reynolds' 1986 paper on di
 
 ---
 
+## Important Key Binds:
+
+| Key/Action        | Function                             |
+|-------------------|--------------------------------------|
+| `ESC`             | Exit the simulation                  |
+| `Y`               | Toggle Cursor-Following mode         |
+| `X`               | Toggle Obstacles on Screen           |
+
+
 ## Requirements
 
 To run this simulator, you need:
@@ -32,11 +41,3 @@ You can install the dependencies using:
 ```bash
 pip install pygame
 ```
-
-## Important Key Binds:
-
-| Key/Action        | Function                             |
-|-------------------|--------------------------------------|
-| `ESC`             | Exit the simulation                  |
-| `Y`               | Toggle Cursor-Following mode         |
-| `X`               | Toggle Obstacles on Screen           |
