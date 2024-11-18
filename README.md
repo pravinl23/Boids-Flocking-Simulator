@@ -31,7 +31,9 @@ To run this simulator, you need:
 You can install the dependencies using:
 ```bash
 pip install pygame
+```
 
+## Important Key Binds:
 
 | Key/Action        | Function                             |
 |-------------------|--------------------------------------|
